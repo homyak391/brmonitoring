@@ -5,7 +5,15 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+
+# НАСТРОЙКА CORS - разрешаем запросы с любых устройств
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 # ВСЕ 89 СЕРВЕРОВ BLACK RUSSIA (полный список)
 SERVERS = [
@@ -103,53 +111,27 @@ SERVERS = [
 ]
 
 def query_samp_server(ip, port, timeout=5):
-    """
-    Отправляет UDP запрос к SA-MP серверу и получает информацию о игроках.
-    Использует стандартный протокол SA-MP Query.
-    """
     try:
-        # Создаем UDP сокет
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(timeout)
-        
-        # Формируем пакет для запроса информации (опкод 'i')
-        # Структура: SAMP + IP в байтах + PORT + 'i'
         packet = b'SAMP' + socket.inet_aton(ip) + struct.pack('<H', port) + b'i'
-        
-        # Отправляем запрос
         sock.sendto(packet, (ip, port))
-        
-        # Получаем ответ
         data, _ = sock.recvfrom(4096)
         sock.close()
         
-        # Парсим ответ
         if len(data) > 11 and data[0:4] == b'SAMP':
             offset = 11
-            
-            # Пароль (пропускаем)
             offset += 1
-            
-            # Количество игроков (2 байта)
             players = struct.unpack('<H', data[offset:offset+2])[0]
             offset += 2
-            
-            # Максимум игроков (2 байта)
             max_players = struct.unpack('<H', data[offset:offset+2])[0]
-            
-            return {
-                "online": players,
-                "maxonline": max_players,
-                "status": "online"
-            }
-    except (socket.timeout, socket.error, struct.error):
+            return {"online": players, "maxonline": max_players, "status": "online"}
+    except:
         pass
-    
     return None
 
 @app.route('/')
 def home():
-    """Главная страница API"""
     return jsonify({
         "status": "ok",
         "message": "BLACK RUSSIA Monitor API",
@@ -162,7 +144,6 @@ def home():
 
 @app.route('/api/servers')
 def get_servers():
-    """Возвращает статус всех 89 серверов в реальном времени"""
     results = []
     for server in SERVERS:
         info = query_samp_server(server["ip"], server["port"])
@@ -179,7 +160,6 @@ def get_servers():
 
 @app.route('/api/server/<ip>/<int:port>')
 def get_server(ip, port):
-    """Проверяет один конкретный сервер"""
     info = query_samp_server(ip, port)
     if info:
         return jsonify({"status": "online", **info})
